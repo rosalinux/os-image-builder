@@ -31,6 +31,8 @@ om-camera
 ledcontrol
 # Used by qt5-qtsensors to read the accelerometer
 iio-sensor-proxy
+# qt5-qtdeclarative for qml UI
+qt5-qtdeclarative
 # And qt5-qtpositioning
 qt5-qtpositioning
 geoclue
