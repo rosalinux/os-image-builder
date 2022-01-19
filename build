@@ -487,19 +487,27 @@ if [ ! -d "$ROOTDIR" ]; then
 	# Poor man's version of "dnf install --installroot=" --
 	# need to get the repository configs from rpm packages
 	# without having the repositories configured...
-	PKGS=${ABF_DOWNLOADS}/${VER_PREFIX}${OMV_VERSION}/repository/$ARCH/main/release/
-	echo $PKGS
-	curl -s -L $PKGS |grep '^<a' |cut -d'"' -f2 >PACKAGES
-	for i in $PRE_PACKAGES; do
-		P=$(grep "^$i-[0-9].*" PACKAGES |tail -n1)
-		if [ "$?" != "0" ]; then
-			echo "Can't find $i package for target" >&2
-			exit 1
-		fi
-		curl -O $PKGS/$P
-		rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
-	done
-
+	if [ -n "$LOCAL_REPO" ]; then
+		PKGS=${LOCAL_ABF_DOWNLOADS}
+		echo $PKGS
+		for P in $LOCAL_PRE_PACKAGES; do
+			curl -O $PKGS/$P
+			rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
+		done
+	else
+		PKGS=${ABF_DOWNLOADS}/${VER_PREFIX}${OMV_VERSION}/repository/$ARCH/main/release/
+		echo $PKGS
+		curl -s -L $PKGS |grep '^<a' |cut -d'"' -f2 >PACKAGES
+		for i in $PRE_PACKAGES; do
+			P=$(grep "^$i-[0-9].*" PACKAGES |tail -n1)
+			if [ "$?" != "0" ]; then
+				echo "Can't find $i package for target" >&2
+				exit 1
+			fi
+			curl -O $PKGS/$P
+			rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
+		done
+	fi
 	# Don't use mirrors when creating the image
 	sed -i -e '/mirror.openmandriva.org/d;s,^	,baseurl=,' "$OURDIR/$ROOTDIR"/etc/yum.repos.d/*.repo
 

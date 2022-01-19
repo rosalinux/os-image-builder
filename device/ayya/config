@@ -1,4 +1,10 @@
 ARCH="aarch64"
+# Use Local repo
+LOCAL_REPO="Enable"
+# Local repo downloads url
+LOCAL_ABF_DOWNLOADS="file:///opt/ayya-repo"
+# Local distro release repos package
+LOCAL_PRE_PACKAGES="distro-release-repos-4.50-0.2.13-omv4050.aarch64.rpm"
 # Used by PinePhone u-boot
 HOSTDEPS="$HOSTDEPS swig python-devel"
 HWPACKAGES="$HWPACKAGES pinephone-tools kernel-firmware-pinephone qmi-tools"
