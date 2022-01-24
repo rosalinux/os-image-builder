@@ -10,7 +10,7 @@ listTargets() {
 }
 usage() {
 	echo "Usage: $0 [ -v VERSION ] target"
-	echo "	-v: Use ${BASE_DISTRO} VERSION (default: cooker)"
+	echo "	-v: Use ${BASE_DISTRO} VERSION (default: rolling)"
 	echo "	-K: Keep already existing build root (default: no)"
 	echo "Available targets:"
 	listTargets
@@ -99,7 +99,7 @@ BASE_TRIPLET="${BASE_TRIPLET:-openmandriva-linux-gnu}"
 # should be just rosa
 VER_PREFIX="${VER_PREFIX:-}"
 # for rosa it is 2021.1
-OMV_VERSION="${OMV_VERSION:-cooker}"
+OMV_VERSION="${OMV_VERSION:-rolling}"
 # for rosa it is RosaLinux
 BASE_DISTRO="${BASE_DISTRO:-OpenMandriva-Lx}"
 BUILDUSER="$(ls -ld ${OURDIR} |cut -d' ' -f3)"
@@ -118,7 +118,7 @@ PRE_PACKAGES="${PRE_PACKAGES:-distro-release-repos}"
 [ -z "$FINAL" ] && FINAL=false
 OS_VERSION=""
 IDENTIFIER=""
-while getopts "d:Fi:Ko:p:P:r:s:S:u:v:w:W" opt; do
+while getopts "d:f:Fi:Ko:p:P:r:s:S:u:v:w:W" opt; do
 	case $opt in
 	d)
 		SDDMSESSION="$OPTARG"
@@ -596,7 +596,7 @@ if [ ! -d "$ROOTDIR" ]; then
 	fi
 
 	if [ -z $KEEP_OLD_ROOT ]; then
-		if ! dnf -y install $EXCLUDE_OPTION --nogpgcheck --installroot=$OURDIR/$ROOTDIR --releasever=$OMV_VERSION --forcearch=$ARCH $WEAKDEPS $PACKAGES $KERNELRPM; then
+		if ! dnf -y install --allowerasing --nodocs $EXCLUDE_OPTION --nogpgcheck --installroot=$OURDIR/$ROOTDIR --releasever=$OMV_VERSION --forcearch=$ARCH $WEAKDEPS $PACKAGES $KERNELRPM; then
 			if [ -e $OURDIR/$ROOTDIR/bin/sh ]; then
 				cat >&2 <<EOF
 WARNING: dnf returned an error code, but it looks like installation finished.

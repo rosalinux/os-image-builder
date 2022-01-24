@@ -3,7 +3,8 @@ ARCH="aarch64"
 HOSTDEPS="$HOSTDEPS swig python-devel"
 HWPACKAGES="$HWPACKAGES pinephone-tools kernel-firmware-pinephone qmi-tools"
 #additional packs for developing/working with sound/audio
-HWPACKAGES="$HWPACKAGES alsa-ucm-conf"
+HWPACKAGES="$HWPACKAGES rdate wpa_supplicant python-gi sshd apulse pulseaudio alsa-lib alsa-utils"
+HWPACKAGES="$HWPACKAGES rsync strace gdb mpg123"
 # usb-gadget is more useful than host USB on a phone
 HWPACKAGES="$HWPACKAGES usb-gadget"
 # On the PinePhone chipset, iwd works well

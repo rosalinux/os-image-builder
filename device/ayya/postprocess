@@ -21,3 +21,13 @@ done
 
 # Let's put the debug shell on something we stand a chance of seeing...
 sed -i -e 's,tty9,ttyS0,g' "$OURDIR/$ROOTDIR"/lib/systemd/system/debug-shell.service
+
+# apply https://github.com/rosalinux/distro-release-desktop-Plasma-Mobile/commit/dd7f77ab513f16d5283602d11b566003f0588e57
+sed -i -e 's|forceFontDPIWayland=.*|forceFontDPIWayland=200|g' $OURDIR/$ROOTDIR/etc/xdg/kcmfonts
+
+# delete local repo after installation complete
+rm -rf $OURDIR/$ROOTDIR/etc/yum.repos.d/rosa.repo
+
+# copy audio test files
+cp $OURDIR/device/$TARGET/test.mp3 $OURDIR/$ROOTDIR/home/omv
+cp $OURDIR/device/$TARGET/test.wav $OURDIR/$ROOTDIR/home/omv
