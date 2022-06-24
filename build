@@ -10,7 +10,7 @@ listTargets() {
 }
 usage() {
 	echo "Usage: $0 [ -v VERSION ] target"
-	echo "	-v: Use ${BASE_DISTRO} VERSION (default: cooker)"
+	echo "	-v: Use ${BASE_DISTRO} VERSION (default: rolling)"
 	echo "	-K: Keep already existing build root (default: no)"
 	echo "Available targets:"
 	listTargets
@@ -36,6 +36,10 @@ run() {
 addpackageset() {
 	if ! [ -e "$OURDIR/packagesets/$1.pkgs" ]; then
 		echo "Unknown package set $1" >&2
+
+		# call for execute cleanup
+		false
+
 		exit 1
 	fi
 	PACKAGESETS="$PACKAGESETS $1"
@@ -69,7 +73,11 @@ isnative() {
 
 if [ "$(id -u)" != "0" ]; then
 	echo "Need root privileges to set ownership of extracted files."
-	exec sudo $0 "$@"
+	exec sudo $0 -u "$(id -un)" "$@"
+
+	# call for execute cleanup
+	false
+
 	exit 1
 fi
 
@@ -91,9 +99,10 @@ BASE_TRIPLET="${BASE_TRIPLET:-openmandriva-linux-gnu}"
 # should be just rosa
 VER_PREFIX="${VER_PREFIX:-}"
 # for rosa it is 2021.1
-OMV_VERSION="${OMV_VERSION:-cooker}"
+OMV_VERSION="${OMV_VERSION:-rolling}"
 # for rosa it is RosaLinux
 BASE_DISTRO="${BASE_DISTRO:-OpenMandriva-Lx}"
+BUILDUSER="$(ls -ld ${OURDIR} |cut -d' ' -f3)"
 
 # install xldd only on OpenMandriva
 if [ $BASE_DISTRO == "OpenMandriva-Lx" ]; then
@@ -109,7 +118,7 @@ PRE_PACKAGES="${PRE_PACKAGES:-distro-release-repos}"
 [ -z "$FINAL" ] && FINAL=false
 OS_VERSION=""
 IDENTIFIER=""
-while getopts "d:f:Fi:K:o:p:P:r:s:S:v:w:W" opt; do
+while getopts "d:f:Fi:Ko:p:P:r:s:S:u:v:w:W" opt; do
 	case $opt in
 	d)
 		SDDMSESSION="$OPTARG"
@@ -143,6 +152,9 @@ while getopts "d:f:Fi:K:o:p:P:r:s:S:v:w:W" opt; do
 		;;
 	S)
 		SERVICES="$(echo $SERVICES |sed -e "s,^${OPTARG} ,,;s, ${OPTARG} , ,;s,^${OPTARG}\$,,;s, ${OPTARG}\$,,")"
+		;;
+	u)
+		BUILDUSER="${OPTARG}"
 		;;
 	w)
 		WEAKDEPS="--setopt=install_weak_deps=True"
@@ -229,6 +241,7 @@ aarch64)
 	[ -z "$KERNELTARGET" ] && KERNELTARGET=Image.gz
 	BOOTEFI=bootaa64.efi
 	EFIARCH=arm64-efi
+	DTBS="dtbs"
 	;;
 arm*)
 	KERNELARCH=arm
@@ -237,13 +250,15 @@ arm*)
 	KERNELTARGET=zImage
 	BOOTEFI=bootarm.efi
 	EFIARCH=arm-efi
+	DTBS="dtbs"
 	;;
 x86_64|znver1)
 	KERNELARCH=x86
 	QEMUARCH=x86_64
-	KERNELTARGET=vmlinuz
+	KERNELTARGET=vmlinux
 	BOOTEFI=bootx64.efi
 	EFIARCH=x86_64-efi
+	DTBS=""
 	;;
 i686)
 	KERNELARCH=x86
@@ -251,6 +266,7 @@ i686)
 	KERNELTARGET=vmlinuz
 	BOOTEFI=bootia32.efi
 	EFIARCH=i386-efi
+	DTBS=""
 	;;
 *)
 	# Anything here is possibly wrong...
@@ -259,6 +275,7 @@ i686)
 	KERNELTARGET=vmlinuz
 	BOOTEFI=boot${ARCH}.efi
 	EFIARCH=${ARCH}-efi
+	DTBS="dtbs"
 	;;
 esac
 if echo $ARCH |grep -qE '(64|znver1)'; then
@@ -306,6 +323,10 @@ if [ -n "$HOSTDEPS" ] && [ -z "$KEEP_OLD_ROOT" ]; then
 			if ! rpm -q $i &>/dev/null; then
 				echo "Couldn't install needed HOST tools. Make sure you're running current ${BASE_DISTRO}"
 				echo "or install $i manually"
+
+				# call for execute cleanup
+				false
+
 				exit 1
 			fi
 		done
@@ -337,14 +358,13 @@ if [ -n "$KERNEL" ]; then
 	KERNELBRANCH="$(echo $KERNEL |cut -d'#' -f2-)"
 	[ -n "$KERNELBRANCH" ] && KERNELBRANCH="-b $KERNELBRANCH"
 	[ -z "$KERNEL_CONFIG" ] && KERNEL_CONFIG="defconfig"
-	if ! [ -d kernel ]; then
-		if ! git clone --depth 1 $KERNELBRANCH $KERNELREPO kernel; then
-			# KERNELBRANCH is a tag or commit hash, not a branch
-			git clone $KERNELREPO kernel
-			cd kernel
-			git checkout -b $KERNELBRANCH $KERNELBRANCH
-			cd ..
-		fi
+	rm -rf kernel
+	if ! git clone --depth 1 $KERNELBRANCH $KERNELREPO kernel; then
+		# KERNELBRANCH is a tag or commit hash, not a branch
+		git clone $KERNELREPO kernel
+		cd kernel
+		git checkout -b $KERNELBRANCH $KERNELBRANCH
+		cd ..
 	fi
 	cd kernel
 	[ -e scripts/lld-version.sh ] && sed -i -e "s,' ' -f 2,' ' -f 4," scripts/lld-version.sh
@@ -362,6 +382,8 @@ if [ -n "$KERNEL" ]; then
 
 	[ -e ${OURDIR}/device/${TARGET}/../generic/${KERNEL_CONFIG} ] && cp -f ${OURDIR}/device/${TARGET}/../generic/${KERNEL_CONFIG} arch/${KERNELARCH}/configs/
 	[ -e ${OURDIR}/device/${TARGET}/${KERNEL_CONFIG} ] && cp -f ${OURDIR}/device/${TARGET}/${KERNEL_CONFIG} arch/${KERNELARCH}/configs/
+	# Get rid of trailing + in version identifiers
+	sed -i -e 's,"+","",g' scripts/setlocalversion
 	# Get rid of the "-dirty" name in localversion
 	cd kernel
 	git add -A || :
@@ -419,35 +441,38 @@ kernel for $SHORTTARGET devices
 EOF
 
 	# CROSS_COMPILE_ARM32 is a Sony-ism, but doesn't hurt anywhere else, so we can specify it unconditionally
+	# FIXME we have to use LD=/usr/bin/$TRIPLET-ld.bfd, for some reason yet to be debugged, aarch64
+	# kernels linked with lld don't boot on emag/oci-aarch64 (kernel 5.16-rc4, clang 13.0.0)
 	if [ "$KERNEL_GCC" = "yes" ]; then
 		echo "%make_build $SMPFLAGS ARCH=$KERNELARCH $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- LD=/usr/bin/$TRIPLET-ld.bfd $KERNEL_CONFIG" >>kernel-rpm/kernel-$SHORTTARGET.spec
 	else
-		echo "%make_build $SMPFLAGS ARCH=$KERNELARCH CLANG_TRIPLE=$TRIPLET- $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- CC=clang LLVM=1 LD=/usr/bin/$TRIPLET-ld.bfd $KERNEL_CONFIG" >>kernel-rpm/kernel-$SHORTTARGET.spec
+		echo "%make_build $SMPFLAGS ARCH=$KERNELARCH CLANG_TRIPLE=$TRIPLET- $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- CC=clang LLVM=1 $KERNEL_CONFIG" >>kernel-rpm/kernel-$SHORTTARGET.spec
 	fi
 	if [ -n "$KERNEL_EXTRACONFIG" ]; then
 		echo "scripts/config $KERNEL_EXTRACONFIG" >>kernel-rpm/kernel-$SHORTTARGET.spec
 	fi
 	if [ "$KERNEL_GCC" = "yes" ]; then
-		echo "%make_build $KERNELTARGET dtbs modules ARCH=$KERNELARCH $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- LD=/usr/bin/$TRIPLET-ld.bfd" >>kernel-rpm/kernel-$SHORTTARGET.spec
+		echo "%make_build $KERNELTARGET $DTBS modules ARCH=$KERNELARCH $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- LD=/usr/bin/$TRIPLET-ld.bfd" >>kernel-rpm/kernel-$SHORTTARGET.spec
 	else
-		echo "%make_build $KERNELTARGET dtbs modules ARCH=$KERNELARCH CLANG_TRIPLE=$TRIPLET- $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- CC=clang LLVM=1 LD=/usr/bin/$TRIPLET-ld.bfd" >>kernel-rpm/kernel-$SHORTTARGET.spec
+		echo "%make_build $KERNELTARGET $DTBS modules ARCH=$KERNELARCH CLANG_TRIPLE=$TRIPLET- $CCOMP CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- CC=clang LLVM=1" >>kernel-rpm/kernel-$SHORTTARGET.spec
 	fi
 	cat >>kernel-rpm/kernel-$SHORTTARGET.spec <<EOF
 
 %install
 # Install kernel modules, if any
-make $SMPFLAGS INSTALL_MOD_STRIP=1 modules_install ARCH=$KERNELARCH $CCOMP INSTALL_MOD_PATH=%{buildroot} INSTALL_DTBS_PATH=%{buildroot}/boot CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf-
+make $SMPFLAGS INSTALL_MOD_STRIP=1 modules_install ARCH=$KERNELARCH $CCOMP INSTALL_MOD_PATH=%{buildroot} INSTALL_DTBS_PATH=%{buildroot}/boot CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- LD=/usr/bin/$TRIPLET-ld.bfd
 # And DTBs -- allow failure here because old kernels (onyx08 and friends)
 # don't have the dtbs_install target
-make $SMPFLAGS INSTALL_MOD_STRIP=1 dtbs_install ARCH=$KERNELARCH $CCOMP INSTALL_MOD_PATH=%{buildroot} INSTALL_DTBS_PATH=%{buildroot}/boot CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- || :
+make $SMPFLAGS INSTALL_MOD_STRIP=1 dtbs_install ARCH=$KERNELARCH $CCOMP INSTALL_MOD_PATH=%{buildroot} INSTALL_DTBS_PATH=%{buildroot}/boot CROSS_COMPILE_ARM32=armv7hnl-linux-gnueabihf- LD=/usr/bin/$TRIPLET-ld.bfd || :
 cp arch/$KERNELARCH/boot/$KERNELTARGET %{buildroot}/boot/vmlinuz-$KERNELVERSION
 
 %files
 /boot/*
 /lib/modules/*
 EOF
+	chown -R $BUILDUSER kernel-rpm
 	cd kernel-rpm
-	rpmbuild -bb --noclean --target $ARCH --define "_sourcedir $(pwd)" --define "_specdir $(pwd)" --define "_srcrpmdir $(pwd)/SRPMS" --define "_rpmdir $(pwd)/RPMS"  kernel-$SHORTTARGET.spec 2>&1 |tee $OURDIR/kernelbuild.log
+	/sbin/runuser -u $BUILDUSER -- rpmbuild -bb --noclean --target $ARCH --define "_sourcedir $(pwd)" --define "_specdir $(pwd)" --define "_srcrpmdir $(pwd)/SRPMS" --define "_rpmdir $(pwd)/RPMS" --define "_builddir $(pwd)/BUILD" --define "_buildrootdir $(pwd)/BUILDROOT" kernel-$SHORTTARGET.spec 2>&1 |tee $OURDIR/kernelbuild.log
 	cd ..
 	KERNELRPM="$(ls $OURDIR/kernel-rpm/RPMS/*/*.rpm)"
 else
@@ -464,7 +489,7 @@ ROOTDIR="${BASE_DISTRO}-$OMV_VERSION-$ARCH-root"
 
 # Make sure we don't have any dangerous bind mounts left...
 cleanup() {
-	for mp in /proc /sys /dev/pts /dev; do
+	for mp in /proc /sys /sys/firmware/efi/efivars /dev/pts /dev; do
 		[ -e "$OURDIR/$ROOTDIR$mp" ] && umount -Rq "$OURDIR/$ROOTDIR$mp" || :
 	done
 }
@@ -487,33 +512,41 @@ if [ ! -d "$ROOTDIR" ]; then
 	# Poor man's version of "dnf install --installroot=" --
 	# need to get the repository configs from rpm packages
 	# without having the repositories configured...
-	if [ -n "$LOCAL_REPO" ]; then
-		PKGS=${LOCAL_ABF_DOWNLOADS}
-		echo $PKGS
-		for P in $LOCAL_PRE_PACKAGES; do
-			curl -O $PKGS/$P
-			rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
-		done
-	else
-		PKGS=${ABF_DOWNLOADS}/${VER_PREFIX}${OMV_VERSION}/repository/$ARCH/main/release/
-		echo $PKGS
-		curl -s -L $PKGS |grep '^<a' |cut -d'"' -f2 >PACKAGES
-		for i in $PRE_PACKAGES; do
-			P=$(grep "^$i-[0-9].*" PACKAGES |tail -n1)
-			if [ "$?" != "0" ]; then
-				echo "Can't find $i package for target" >&2
-				exit 1
-			fi
-			curl -O $PKGS/$P
-			rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
-		done
-	fi
+	PKGS=${ABF_DOWNLOADS}/${VER_PREFIX}${OMV_VERSION}/repository/$ARCH/main/release/
+	echo $PKGS
+	curl -s -L $PKGS |grep '^<a' |cut -d'"' -f2 >PACKAGES
+	for i in $PRE_PACKAGES; do
+		P=$(grep "^$i-[0-9].*" PACKAGES |tail -n1)
+		if [ "$?" != "0" ]; then
+			echo "Can't find $i package for target" >&2
+
+			# call for execute cleanup
+			false
+
+			exit 1
+		fi
+		curl -O $PKGS/$P
+		rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
+	done
+
 	# Don't use mirrors when creating the image
 	sed -i -e '/mirror.openmandriva.org/d;s,^	,baseurl=,' "$OURDIR/$ROOTDIR"/etc/yum.repos.d/*.repo
 
+	if echo ${OMV_VERSION} |grep -q '^[0-9]'; then
+		DNF_VERSION=release
+		# This also needs to work before the rock symlink is updated on
+		# a new release...
+		dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-disabled rock-$ARCH
+		dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-disabled rock-updates-$ARCH
+		dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-enabled release-$ARCH
+		dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-enabled release-updates-$ARCH
+	else
+		DNF_VERSION="${OMV_VERSION}"
+	fi
+
 	if [ -n "$EXTRA_REPOS" ]; then
 		for i in $EXTRA_REPOS; do
-			dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-enabled $OMV_VERSION-$ARCH-$i
+			dnf config-manager --installroot "$OURDIR/$ROOTDIR" --set-enabled $DNF_VERSION-$ARCH-$i
 		done
 	fi
 
@@ -542,7 +575,7 @@ if [ ! -d "$ROOTDIR" ]; then
 
 	# Mount relevant filesystems so %post scripts can access
 	# the likes of /dev/null and /dev/urandom
-	for mp in /proc /sys /dev /dev/pts; do
+	for mp in /proc /sys /sys/firmware/efi/efivars /dev /dev/pts; do
 		mkdir -p "$OURDIR/$ROOTDIR$mp" || :
 		mount --bind -o ro $mp "$OURDIR/$ROOTDIR$mp"
 	done
@@ -563,7 +596,7 @@ if [ ! -d "$ROOTDIR" ]; then
 	fi
 
 	if [ -z $KEEP_OLD_ROOT ]; then
-		if ! dnf -y install $EXCLUDE_OPTION --nogpgcheck --installroot=$OURDIR/$ROOTDIR --releasever=$OMV_VERSION --forcearch=$ARCH $WEAKDEPS $PACKAGES $KERNELRPM; then
+		if ! dnf -y install --allowerasing --nodocs $EXCLUDE_OPTION --nogpgcheck --installroot=$OURDIR/$ROOTDIR --releasever=$OMV_VERSION --forcearch=$ARCH $WEAKDEPS $PACKAGES $KERNELRPM; then
 			if [ -e $OURDIR/$ROOTDIR/bin/sh ]; then
 				cat >&2 <<EOF
 WARNING: dnf returned an error code, but it looks like installation finished.
@@ -572,6 +605,10 @@ script failing - but you may want to double-check.
 EOF
 			else
 				echo "ERROR: dnf failed without installing what looks like a workable system."
+
+				# call for execute cleanup
+				false
+
 				exit 1
 			fi
 		fi
@@ -608,17 +645,19 @@ EOF
 	# be hidden by tmpfs mounts anyway
 	rm -rf "$OURDIR/$ROOTDIR/run/* $OURDIR/$ROOTDIR/tmp/*"
 
-	if ! grep -q '^omv:' $OURDIR/$ROOTDIR/etc/passwd; then
-		# Create omv user (password omv)
-		echo 'omv:x:1001:1001::/home/omv:/bin/bash' >>$OURDIR/$ROOTDIR/etc/passwd
-		echo 'omv:$6$rG3bQ92hkTNubV1p$5qPB9FoXBhNcSE1FOklCoEDowveAgjSf2cHYVwCENZaWtgpFQaRRRN5Ihwd8nuaKMdA1R1XouOasJ7u5dbiGt0:17302:0:99999:7:::' >>$OURDIR/$ROOTDIR/etc/shadow
-		echo 'omv:x:1001:' >>$OURDIR/$ROOTDIR/etc/group
-		# Add the omv user to important groups...
-		for group in audio dialout input lp lpadmin network render sambashare screen storage tty users video wheel; do
-			sed -i -e "s,$group:.*\$,&omv," $OURDIR/$ROOTDIR/etc/group
-		done
-		cp -a $OURDIR/$ROOTDIR/etc/skel $OURDIR/$ROOTDIR/home/omv
-		chown -R 1001:1001 $OURDIR/$ROOTDIR/home/omv
+	if [ "$CREATE_DEFAULT_USER" != "no" ]; then
+		if ! grep -q '^omv:' $OURDIR/$ROOTDIR/etc/passwd; then
+			# Create omv user (password omv)
+			echo 'omv:x:1001:1001::/home/omv:/bin/bash' >>$OURDIR/$ROOTDIR/etc/passwd
+			echo 'omv:$6$rG3bQ92hkTNubV1p$5qPB9FoXBhNcSE1FOklCoEDowveAgjSf2cHYVwCENZaWtgpFQaRRRN5Ihwd8nuaKMdA1R1XouOasJ7u5dbiGt0:17302:0:99999:7:::' >>$OURDIR/$ROOTDIR/etc/shadow
+			echo 'omv:x:1001:' >>$OURDIR/$ROOTDIR/etc/group
+			# Add the omv user to important groups...
+			for group in audio dialout input lp lpadmin network render sambashare screen storage tty users video wheel; do
+				sed -i -e "s,$group:.*\$,&omv," $OURDIR/$ROOTDIR/etc/group
+			done
+			cp -a $OURDIR/$ROOTDIR/etc/skel $OURDIR/$ROOTDIR/home/omv
+			chown -R 1001:1001 $OURDIR/$ROOTDIR/home/omv
+		fi
 
 		# If sddm is installed, set it up to autologin as omv
 		if [ -z "$SDDMSESSION" ]; then
@@ -663,7 +702,7 @@ EOF
 		if [ "$USE_UEFI" = "yes" ]; then
 			printf '%s\n' "Creating ESP for GRUB."
 			mkdir -p $OURDIR/$ROOTDIR/boot/efi/EFI/BOOT
-			chroot "$OURDIR/$ROOTDIR" /usr/bin/grub2-mkimage -o /boot/efi/EFI/BOOT/$BOOTEFI -O $EFIARCH -p /EFI/BOOT fat part_gpt part_msdos normal boot linux configfile loopback chain efifwsetup efi_gop ls search search_label search_fs_uuid search_fs_file gfxterm gfxterm_background gfxterm_menu test all_video loadenv exfat ext2
+			chroot "$OURDIR/$ROOTDIR" /usr/bin/grub2-mkimage -o /boot/efi/EFI/BOOT/$BOOTEFI -O $EFIARCH -p /EFI/BOOT fat part_gpt part_msdos normal boot linux configfile loopback chain efifwsetup efi_gop ls search search_label search_fs_uuid search_fs_file gfxterm gfxterm_background gfxterm_menu gfxmenu test all_video loadenv exfat ext2
 		fi
 
 		if [ "$USE_SYSTEMD_UEFI" = "yes" ]; then
@@ -696,7 +735,7 @@ default $MACH_ID-$KERNELVERSION.conf
 timeout 10
 EOF
 			sed -i -e 's,boot\/efi\/,\/,g' "$OURDIR/$ROOTDIR"/boot/efi/loader/entries/$MACH_ID-$KERNELVERSION.conf
-			if [ -n ${DTB} ] && ! grep -q devicetree $OURDIR/$ROOTDIR/boot/efi/loader/entries/$MACH_ID-$KERNELVERSION.conf; then
+			if [ -n "${DTB}" ] && ! grep -q devicetree $OURDIR/$ROOTDIR/boot/efi/loader/entries/$MACH_ID-$KERNELVERSION.conf; then
 				install -D -m644 "$OURDIR/$ROOTDIR/boot/dtb-$KERNELVERSION/${DTB}.dtb" "$OURDIR/$ROOTDIR/boot/efi/$MACH_ID/$KERNELVERSION/dtb/${DTB}.dtb"
 				printf '%s\n' "devicetree "/$MACH_ID/$KERNELVERSION"/dtb/$DTB.dtb" >> $OURDIR/$ROOTDIR/boot/efi/loader/entries/$MACH_ID-$KERNELVERSION.conf
 			fi
@@ -771,6 +810,9 @@ EOF
 	# Rebuild mime database
 	[ -x "$OURDIR/$ROOTDIR"/usr/bin/update-mime-database ] && chroot "$OURDIR/$ROOTDIR" /usr/bin/update-mime-database /usr/share/mime
 
+	# Generate gconv-modules.cache
+	[ -x "$OURDIR/$ROOTDIR"/usr/sbin/iconvconfig ] && chroot "$OURDIR/$ROOTDIR" /usr/sbin/iconvconfig
+
 	chroot "$OURDIR/$ROOTDIR" /sbin/ldconfig
 
 	for i in etc var; do
@@ -790,7 +832,7 @@ EOF
 else
 	# Mount relevant filesystems so generate-bootimg can use
 	# the likes of /dev/null and /dev/urandom in chroot
-	for mp in /proc /sys /dev /dev/pts; do
+	for mp in /proc /sys /sys/firmware/efi/efivars /dev /dev/pts; do
 		mkdir -p "$OURDIR/$ROOTDIR$mp" || :
 		mount --bind -o ro $mp "$OURDIR/$ROOTDIR$mp"
 	done
@@ -812,7 +854,7 @@ run generate-bootimg
 cleanup
 run generate-rootfs
 
-xz -ef9 results/*.img || :
+xz -ef9 results/*.img &>/dev/null || :
 
 # All of the following are allowed to fail because not
 # every board needs/produces every one of them

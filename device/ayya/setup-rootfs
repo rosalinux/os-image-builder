@@ -1,0 +1,5 @@
+#!/bin/bash
+
+mkdir -p $OURDIR/$ROOTDIR/etc/yum.repos.d
+[ -e /etc/yum.repos.d/rosa.repo ] && cp /etc/yum.repos.d/rosa.repo $OURDIR/$ROOTDIR/etc/yum.repos.d
+
