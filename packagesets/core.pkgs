@@ -1,8 +1,8 @@
 basesystem-minimal
 distro-release-common
 distro-release-OpenMandriva
-distro-release-repos
-distro-release-repos-keys
+#distro-release-repos
+#distro-release-repos-keys
 systemd-console
 systemd-coredump
 systemd-locale

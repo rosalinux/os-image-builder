@@ -2,12 +2,11 @@
 task-plasma-mobile
 plasma-workspace-wayland
 distro-release-desktop-Plasma-Mobile
-plasma-phone-components-wayland
+plasma-mobile-wayland
 ${LIB}GLESv1_CM1
 ${LIB}GLESv2_2
 ${LIB}OpenGL0
 ${LIB}OpenVG0
-${LIB}kms1
 simplelogin
 breeze-plymouth
 calligra-gemini
@@ -35,6 +34,7 @@ iio-sensor-proxy
 qt5-qtdeclarative
 # And qt5-qtpositioning
 qt5-qtpositioning
+qt5-qtfeedback
 geoclue
 gpsd
 AmbientLight
