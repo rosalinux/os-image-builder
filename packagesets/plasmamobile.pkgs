@@ -2,12 +2,11 @@
 task-plasma-mobile
 plasma-workspace-wayland
 distro-release-desktop-Plasma-Mobile
-plasma-phone-components-wayland
+plasma-mobile-wayland
 ${LIB}GLESv1_CM1
 ${LIB}GLESv2_2
 ${LIB}OpenGL0
 ${LIB}OpenVG0
-${LIB}kms1
 simplelogin
 breeze-plymouth
 calligra-gemini
@@ -23,8 +22,9 @@ bluez-qt
 bluedevil
 pulseaudio-module-bluetooth
 maliit-keyboard
-# ofono doesn't work, let's use something else
-om-phone
+## ofono doesn't work, let's use something else
+#om-phone
+plasma-dialer
 # For now, until the pinephone camera works with plasma-camera
 om-camera
 # Better not rely on gstreamer crap to drive the flash
@@ -35,6 +35,7 @@ iio-sensor-proxy
 qt5-qtdeclarative
 # And qt5-qtpositioning
 qt5-qtpositioning
+qt5-qtfeedback
 geoclue
 gpsd
 AmbientLight

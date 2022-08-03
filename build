@@ -553,7 +553,7 @@ if [ ! -d "$ROOTDIR" ]; then
 	EXCLUDE_PACKAGES=""
 
 	if [ -n "$(echo $PACKAGES | grep -i -P -o 'distro-release-desktop-Plasma-Mobile')" ]; then
-		EXCLUDE_PACKAGES="$EXCLUDE_PACKAGES distro-release-desktop-Plasma"
+		EXCLUDE_PACKAGES="$EXCLUDE_PACKAGES,distro-release-desktop-Plasma"
 	fi
 
 	EXCLUDE_OPTION=""
@@ -628,6 +628,7 @@ EOF
 					break
 				fi
 			done
+			# TODO: check this
 			if [ -z "$SDDMSESSION" ]; then
 				for desktop in plasma-mobile plasmawayland weston; do
 					if [ -e "$OURDIR/$ROOTDIR"/usr/share/wayland-sessions/$desktop.desktop ]; then
@@ -736,8 +737,9 @@ EOF
 	# Make sure key services are started even if they're omitted
 	# in the preset files
 	chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl enable getty@tty1.service
+	#FIXME
+	chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl disable sddm
 	[ -e "$OURDIR/$ROOTDIR"/lib/systemd/system/simplelogin.service ] && chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl enable simplelogin
-	[ -e "$OURDIR/$ROOTDIR"/lib/systemd/system/sddm.service ] && chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl enable sddm
 	if [ -e "$OURDIR/$ROOTDIR/lib/systemd/system/sddm.service" ] || [ -e "$OURDIR/$ROOTDIR/lib/systemd/system/simplelogin.service" ]; then
 		chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl set-default graphical.target
 	else
@@ -797,9 +799,9 @@ else
 fi
 
 # Reinstall distro-release-repos to get mirrors back
-
 [ -z $KEEP_OLD_ROOT ] && dnf -y reinstall --installroot="$OURDIR/$ROOTDIR" --releasever=$OMV_VERSION --forcearch=$ARCH ${PRE_PACKAGES}
 [ -d "$OURDIR/$ROOTDIR/var/cache/dnf" ] && rm -rf "$OURDIR/$ROOTDIR/var/cache/dnf/*"
+
 BASENAME="${BASE_DISTRO}-${SHORTTARGET}-${OS_VERSION}"
 
 # generate-bootimg and generate-rootfs can write to results.
