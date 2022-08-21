@@ -765,6 +765,19 @@ EOF
 	    chroot "$OURDIR/$ROOTDIR" /bin/mkdir -p /home/omv/.cache/fontconfig/
 	fi
 
+	# Enable maliit keyboard for omv user
+	# TODO: make it system-wide
+	mkdir -p "$OURDIR/$ROOTDIR/home/omv/.config"
+	cat >> "$OURDIR/$ROOTDIR/home/omv/.config/kwinrc" <<EOF
+
+[Wayland]
+InputMethod=/usr/share/applications/com.github.maliit.keyboard.desktop
+
+EOF
+	chmod og-rwx "$OURDIR/$ROOTDIR/home/omv/.config" "$OURDIR/$ROOTDIR/home/omv/.config/kwinrc"
+	chroot "$OURDIR/$ROOTDIR" chown omv /home/omv/.config
+	chroot "$OURDIR/$ROOTDIR" chown omv /home/omv/.config/kwinrc
+
 	# Rebuild man-db
 	[ -x "$OURDIR/$ROOTDIR"/usr/bin/mandb ] && chroot "$OURDIR/$ROOTDIR" /usr/bin/mandb --quiet
 
