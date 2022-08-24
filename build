@@ -487,11 +487,13 @@ if [ ! -d "$ROOTDIR" ]; then
 	# Poor man's version of "dnf install --installroot=" --
 	# need to get the repository configs from rpm packages
 	# without having the repositories configured...
-	if [ -n "$CUSTOM_REPO_RPM" ]; then
-		#mkdir -p $OURDIR/$ROOTDIR/etc/yum.repos.d
-		#curl --output-dir $OURDIR/$ROOTDIR/etc/yum.repos.d -O $CUSTOM_REPO 
-		RPM_FILENAME=$(curl -O -s -w "%{filename_effective}" $CUSTOM_REPO_RPM)
-		rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $RPM_FILENAME
+	if [ -n "$LOCAL_REPO" ]; then
+		PKGS=${LOCAL_ABF_DOWNLOADS}
+		echo $PKGS
+		for P in $LOCAL_PRE_PACKAGES; do
+			curl -O $PKGS/$P
+			rpm -r $OURDIR/$ROOTDIR -Uvh --ignorearch --nodeps $P
+		done
 	else
 		PKGS=${ABF_DOWNLOADS}/${VER_PREFIX}${OMV_VERSION}/repository/$ARCH/main/release/
 		echo $PKGS
@@ -810,9 +812,8 @@ else
 fi
 
 # Reinstall distro-release-repos to get mirrors back
-#FIXME
-#[ -z $KEEP_OLD_ROOT ] && dnf -y reinstall --installroot="$OURDIR/$ROOTDIR" --releasever=$OMV_VERSION --forcearch=$ARCH ${PRE_PACKAGES}
-#[ -d "$OURDIR/$ROOTDIR/var/cache/dnf" ] && rm -rf "$OURDIR/$ROOTDIR/var/cache/dnf/*"
+[ -z $KEEP_OLD_ROOT ] && dnf -y reinstall --installroot="$OURDIR/$ROOTDIR" --releasever=$OMV_VERSION --forcearch=$ARCH ${PRE_PACKAGES}
+[ -d "$OURDIR/$ROOTDIR/var/cache/dnf" ] && rm -rf "$OURDIR/$ROOTDIR/var/cache/dnf/*"
 
 BASENAME="${BASE_DISTRO}-${SHORTTARGET}-${OS_VERSION}"
 
