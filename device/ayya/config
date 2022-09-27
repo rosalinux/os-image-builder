@@ -2,7 +2,7 @@ ARCH="aarch64"
 # Use Local repo
 LOCAL_REPO="Enable"
 # Local repo downloads url
-LOCAL_ABF_DOWNLOADS="file:///opt/ayya-cooker-snapshot"
+LOCAL_ABF_DOWNLOADS="file:///opt/ayya-staging"
 # Local distro release repos package
 LOCAL_PRE_PACKAGES="distro-release-ayya-0.0.1-1.el8.noarch.rpm"
 # Used by PinePhone u-boot
