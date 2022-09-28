@@ -26,7 +26,7 @@ maliit-keyboard
 #om-phone
 plasma-dialer
 # For now, until the pinephone camera works with plasma-camera
-om-camera
+#om-camera
 # Better not rely on gstreamer crap to drive the flash
 ledcontrol
 # Used by qt5-qtsensors to read the accelerometer
@@ -43,3 +43,10 @@ AmbientLight
 v4l-utils
 # Most Plasma Mobile devices should have LTE
 networkmanager-wwan
+
+# MTK specifics
+python-gi
+dbus-rosa-service
+mtk-kernel-modules
+mtk
+configs

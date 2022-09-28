@@ -14,7 +14,7 @@ for i in mdmonitor rtkit-daemon remote-cryptsetup dnf-automatic-download \
 done
 # Make sure some important bits and pieces are enabled
 for i in gpsd.socket gpsd.service geoclue iio-sensor-proxy \
-	usb-gadget plymouth-start modem ModemManager \
+	usb-gadget plymouth-start \
 		; do
 	chroot "$OURDIR/$ROOTDIR" /usr/bin/systemctl enable $i
 done
