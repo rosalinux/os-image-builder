@@ -6,7 +6,7 @@ KERNEL_DIR="kernel-4.14"
 LK_DIR="vendor/mediatek/proprietary/bootable/bootloader/lk"
 
 # Repository used in rosalinux
-KERNEL_REPO="git@github.com:rosalinux/linux-4.14.189_mtk_android.git"
+KERNEL_REPO="ssh://mbuild.rosalinux.ru:29418/linux-4.14.189_mtk_android"
 LK_REPO="git@github.com:rosalinux/ayya-lk.git"
 
 # Repository branch used in rosalinux
